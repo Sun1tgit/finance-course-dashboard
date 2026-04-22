@@ -45,22 +45,43 @@ def categorize_expenses_with_ai(descriptions):
 
 # --- 4. Main App Logic ---
 if uploaded_file is not None:
+    # Read the file
     df = pd.read_csv(uploaded_file)
     
-    if "Description" in df.columns and "Amount" in df.columns:
-        st.success("File uploaded successfully!")
+    # Clean up empty rows that banks sometimes leave at the top/bottom
+    df.dropna(how='all', inplace=True)
+    
+    st.success("File uploaded successfully!")
+    st.info("💡 Since every bank uses different labels, please tell the app which columns to read:")
+    
+    # Create dropdown menus for the user to map their columns
+    col_sel1, col_sel2 = st.columns(2)
+    with col_sel1:
+        desc_col = st.selectbox("Which column has the Transaction Names/Narration?", df.columns)
+    with col_sel2:
+        amount_col = st.selectbox("Which column has the Expense Amount/Debit?", df.columns)
         
-        with st.spinner("AI is analyzing your expenses..."):
-            unique_desc = df['Description'].dropna().unique().tolist()
+    # Add a button so the AI only runs when the user is ready
+    if st.button("🚀 Analyze My Expenses"):
+        with st.spinner("AI is categorizing your expenses. This takes a few seconds..."):
+            
+            # Get unique descriptions from the column the user chose
+            unique_desc = df[desc_col].dropna().unique().tolist()
             category_mapping = categorize_expenses_with_ai(unique_desc)
-            df['Category'] = df['Description'].map(category_mapping)
             
-            # Ensure amounts are positive numbers and handle commas
-            df['Amount'] = pd.to_numeric(df['Amount'].astype(str).str.replace(',', ''), errors='coerce').abs()
+            # Map the categories back to the dataframe
+            df['Category'] = df[desc_col].map(category_mapping)
             
-            summary = df.groupby('Category')['Amount'].sum().reset_index()
-            total_spent = summary['Amount'].sum()
-            summary['Percentage'] = (summary['Amount'] / total_spent) * 100
+            # Clean up the amount column (removes commas and converts to numbers)
+            df['Clean_Amount'] = pd.to_numeric(df[amount_col].astype(str).str.replace(',', ''), errors='coerce').abs()
+            
+            # Drop rows where the amount isn't a number (like blank lines)
+            df = df.dropna(subset=['Clean_Amount'])
+            
+            # Calculate totals
+            summary = df.groupby('Category')['Clean_Amount'].sum().reset_index()
+            total_spent = summary['Clean_Amount'].sum()
+            summary['Percentage'] = (summary['Clean_Amount'] / total_spent) * 100
             
             # --- 5. Visualizing the Data ---
             st.subheader("Your 50-30-20 Breakdown")
@@ -68,7 +89,7 @@ if uploaded_file is not None:
             col1, col2 = st.columns([1, 1])
             
             with col1:
-                fig = px.pie(summary, values='Amount', names='Category', 
+                fig = px.pie(summary, values='Clean_Amount', names='Category', 
                              title="Expense Distribution",
                              color='Category',
                              color_discrete_map={'Need': '#ef553b', 'Want': '#636efa', 'Investment': '#00cc96'})
@@ -76,13 +97,14 @@ if uploaded_file is not None:
                 
             with col2:
                 st.write("### Summary Table")
-                st.dataframe(summary.style.format({'Amount': '${:,.2f}', 'Percentage': '{:.1f}%'}))
+                # Format the table for display
+                display_summary = summary.copy()
+                display_summary.columns = ['Category', 'Amount Spent', '% of Total']
+                st.dataframe(display_summary.style.format({'Amount Spent': '₹{:,.2f}', '% of Total': '{:.1f}%'}))
                 
                 st.write("### How are you doing?")
                 needs_pct = summary[summary['Category'] == 'Need']['Percentage'].sum() if not summary[summary['Category'] == 'Need'].empty else 0
                 if needs_pct > 50:
-                    st.warning(f"Your Needs are at {needs_pct:.1f}%. Try to keep them under 50%.")
+                    st.warning(f"Your Needs are at {needs_pct:.1f}%. Try to keep them under the 50% target.")
                 else:
                     st.success(f"Great job! Your Needs are at {needs_pct:.1f}%, which is within the 50% target.")
-    else:
-        st.error("Please ensure your CSV file has columns named 'Description' and 'Amount'.")
