@@ -21,7 +21,7 @@ uploaded_file = st.file_uploader("Upload your bank statement (CSV format)", type
 
 @st.cache_data
 def categorize_expenses_with_ai(descriptions):
-    model = genai.GenerativeModel('gemini-1.5-flash')
+    model = genai.GenerativeModel('gemini-1.5-flash-latest')
     
     prompt = f"""
     You are a financial advisor. I will give you a list of bank transaction descriptions. 
